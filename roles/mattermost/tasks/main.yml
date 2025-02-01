@@ -1,14 +1,9 @@
 ---
-# git clone my repo
-# set up secrets here in ansible
-# replace env file with custom env file that references secrets
-# bobs your uncle?
-
-# - name: Pull down the latest update from fork
-#   git:
-#     repo: 'https://git.awful.club/jowj/mattermost-docker.git'
-#     dest: /home/josiah/mattermost/
-#     version: main
+- name: Create directory to deploy from
+  file:
+    path: "{{ mm_deploy_dir }}"
+    state: directory
+    mode: 0700
 
 - name: copy over my custom env file
   template:
@@ -16,7 +11,7 @@
     dest: "{{ item.dest }}"
     mode: 0777
   with_items:
-    - {src: 'env.j2', dest: '/home/josiah/mattermost/.env'}
+    - { src: "env.j2", dest: "{{ mm_deploy_dir }}/.env" }
 
 # i'm not setting owner/group here and might need to
 - name: ensure the required MM directories exist
@@ -28,26 +23,29 @@
     mode: 0700
     recurse: yes
   with_items:
-   [ '/home/josiah/mattermost/volumes/app/mattermost/config', '/home/josiah/mattermost/volumes/app/mattermost/data', '/home/josiah/mattermost/volumes/app/mattermost/logs', '/home/josiah/mattermost/volumes/app/mattermost/plugins', '/home/josiah/mattermost/volumes/app/mattermost/client/plugins', '/home/josiah/mattermost/volumes/app/mattermost/bleve-indexes' ]
-
+    - "{{ mm_deploy_dir }}/volumes/app/mattermost/config"
+    - "{{ mm_deploy_dir }}/volumes/app/mattermost/data"
+    - "{{ mm_deploy_dir }}/volumes/app/mattermost/logs"
+    - "{{ mm_deploy_dir }}/volumes/app/mattermost/plugins"
+    - "{{ mm_deploy_dir }}/volumes/app/mattermost/client/plugins"
+    - "{{ mm_deploy_dir }}/volumes/app/mattermost/bleve-indexes"
 
 - name: Stop running containers
   community.docker.docker_compose_v2:
-    project_src: "/home/josiah/mattermost"
+    project_src: "{{ mm_deploy_dir }}"
     state: stopped
     files:
-     - docker-compose.yml
-     - docker-compose.nginx.yml
+      - docker-compose.yml
+      - docker-compose.nginx.yml
   register: output
- 
 
 - name: Deploy mattermost with compose
   community.docker.docker_compose_v2:
-    project_src: "/home/josiah/mattermost"
+    project_src: "{{ mm_deploy_dir }}"
     state: restarted
     files:
-    - docker-compose.yml
-    - docker-compose.nginx.yml
+      - docker-compose.yml
+      - docker-compose.nginx.yml
 
 - name: Creates a cron file under /etc/cron.d
   ansible.builtin.cron:
@@ -56,7 +54,9 @@
     minute: "0"
     hour: "12"
     user: root
-    job: "docker compose -f docker-compose.yml -f docker-compose.nginx.yml down && \
-    bash scripts/issue-certificate.sh -d mattermost.awful.club -o /home/josiah/mattermost/certs && \
-    docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d"
+    job: >-
+      cd "{{ mm_deploy_dir }}" &&
+      docker compose -f docker-compose.yml -f docker-compose.nginx.yml down &&
+      bash scripts/issue-certificate.sh -d mattermost.awful.club -o "{{ mm_deploy_dir }}/certs" &&
+      docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d
     cron_file: ansible_mm_le_cron
