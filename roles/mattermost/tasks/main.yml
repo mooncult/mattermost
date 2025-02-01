@@ -1,9 +1,12 @@
 ---
-- name: Create directory to deploy from
-  file:
-    path: "{{ mm_deploy_dir }}"
-    state: directory
-    mode: 0700
+- name: Clone/update the mattermost repo
+  ansible.builtin.git:
+    repo: "https://github.com/mattermost/docker"
+    dest: "{{ mm_deploy_dir }}"
+    version: "main"
+    update: yes
+    force: yes
+    accept_hostkey: yes
 
 - name: copy over my custom env file
   template:
