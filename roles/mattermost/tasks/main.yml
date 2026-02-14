@@ -55,11 +55,12 @@
 
 - name: Deploy certificate renewal script
   template:
-    src: "ansible_mm_le_cron.sh.j2"
-    dest: "/usr/local/bin/ansible_mm_le_cron.sh"
+    src: "mm-cert-renew.sh.j2"
+    dest: "/usr/local/bin/mm-cert-renew.sh"
     mode: 0755
     owner: root
     group: root
+  tags: certs
 
 - name: Creates a cron file under /etc/cron.d
   ansible.builtin.cron:
@@ -70,5 +71,6 @@
     user: root
     # Pipe the output to the systemd journal.
     # View logs for this with 'journalctl -t mm-le-renew --since "8 days ago" -f'
-    job: '"/usr/local/bin/ansible_mm_le_cron.sh" 2>&1 | /usr/bin/systemd-cat -t mm-le-renew'
-    cron_file: ansible_mm_le_cron
+    job: '"/usr/local/bin/mm-cert-renew.sh" 2>&1 | /usr/bin/systemd-cat -t mm-cert-renew'
+    cron_file: mm-cert-renew
+  tags: certs

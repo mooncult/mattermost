@@ -1,0 +1,68 @@
+#!/bin/bash
+set -eu
+
+## Variables from Ansible
+DEPLOY_DIR="{{ mm_deploy_dir }}"
+LETSENCRYPT_EMAIL="{{ mm_letsencrypt_email }}"
+
+CERT_DIR="${DEPLOY_DIR}/certs"
+
+. "${DEPLOY_DIR}/.env"
+
+if test -z "${DOMAIN}" || test -z "${LETSENCRYPT_EMAIL}"; then
+  echo "[$(date)] ERROR: missing variables"
+  exit 1
+fi
+
+cd "${DEPLOY_DIR}"
+
+echo "[$(date)] Starting certificate renewal process"
+
+renew() {
+  echo "[$(date)] Attempting to renew existing certificate"
+  /usr/bin/docker run --rm --name certbot \
+    -p 80:80 \
+    -v "${CERT_DIR}/etc/letsencrypt:/etc/letsencrypt" \
+    -v "${CERT_DIR}/lib/letsencrypt:/var/lib/letsencrypt" \
+    --entrypoint sh \
+    certbot/certbot \
+    -c \
+    "certbot renew --non-interactive --standalone --preferred-challenges http; rc=\$?; printf '\n/var/log/letsencrypt/letsencrypt.log\n\n'; cat /var/log/letsencrypt/letsencrypt.log; exit \$rc"
+}
+
+issue() {
+  echo "[$(date)] No existing certificate found, issuing new certificate"
+  /usr/bin/docker run --rm --name certbot \
+    -p 80:80 \
+    -v "${CERT_DIR}/etc/letsencrypt:/etc/letsencrypt" \
+    -v "${CERT_DIR}/lib/letsencrypt:/var/lib/letsencrypt" \
+    --entrypoint sh \
+    certbot/certbot \
+    -c \
+    "certbot certonly --non-interactive --agree-tos --email '${LETSENCRYPT_EMAIL}' --standalone --preferred-challenges http -d '${DOMAIN}'; rc=\$?; printf '\n/var/log/letsencrypt/letsencrypt.log\n\n'; cat /var/log/letsencrypt/letsencrypt.log; exit \$rc"
+}
+
+# Check if certificate exists
+certexists() {
+  [ -d "${CERT_DIR}/etc/letsencrypt/live/${DOMAIN}" ] || \
+  [ -d "${CERT_DIR}/etc/letsencrypt/live/${DOMAIN}-0001" ] || \
+  [ -d "${CERT_DIR}/etc/letsencrypt/live/${DOMAIN}-0002" ]
+}
+
+# Stop Mattermost containers to free up port 80
+/usr/bin/docker compose -f docker-compose.yml -f docker-compose.nginx.yml down
+
+set +e # Don't exit immediately on error; we want to restart Mattermost even if cert renewal fails
+if certexists; then
+  renew || true
+else
+  issue || true
+fi
+set -e
+
+echo "[$(date)] Certificate process completed, restarting Mattermost"
+
+# Restart Mattermost containers
+/usr/bin/docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d
+
+echo "[$(date)] Certificate renewal process finished"
