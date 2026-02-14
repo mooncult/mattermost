@@ -50,16 +50,22 @@
       - docker-compose.yml
       - docker-compose.nginx.yml
 
+- name: Deploy certificate renewal script
+  template:
+    src: "ansible_mm_le_cron.sh.j2"
+    dest: "/usr/local/bin/ansible_mm_le_cron.sh"
+    mode: 0755
+    owner: root
+    group: root
+
 - name: Creates a cron file under /etc/cron.d
   ansible.builtin.cron:
     name: halt mm to renew certs
-    weekday: "2"
+    weekday: "2" # Tuesday
     minute: "0"
-    hour: "12"
+    hour: "10" # 10:00 system time (UTC), 4:00 CST, 5:00 CDT
     user: root
-    job: >-
-      cd "{{ mm_deploy_dir }}" &&
-      docker compose -f docker-compose.yml -f docker-compose.nginx.yml down &&
-      bash scripts/issue-certificate.sh -d mattermost.awful.club -o "{{ mm_deploy_dir }}/certs" &&
-      docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d
+    # Pipe the output to the systemd journal.
+    # View logs for this with 'journalctl -t mm-le-renew --since "8 days ago" -f'
+    job: '"/usr/local/bin/ansible_mm_le_cron.sh" 2>&1 | /usr/bin/systemd-cat -t mm-le-renew'
     cron_file: ansible_mm_le_cron

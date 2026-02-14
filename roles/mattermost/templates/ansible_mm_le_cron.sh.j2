@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+cd /opt/mattermost
+
+/usr/bin/docker compose -f docker-compose.yml -f docker-compose.nginx.yml down
+
+# This script calls docker with -it, which requires a TTY.
+# When run by cron, this will fail and print 'the input device is not a TTY'.
+# So we wrap it in 'script' to assign it a TTY.
+/usr/bin/script -e -c 'bash scripts/issue-certificate.sh -d mattermost.awful.club -o "/opt/mattermost/certs"' /dev/null
+
+/usr/bin/docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d
