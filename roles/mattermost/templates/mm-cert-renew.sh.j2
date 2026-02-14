@@ -18,6 +18,15 @@ cd "${DEPLOY_DIR}"
 
 echo "[$(date)] Starting certificate renewal process"
 
+showcerts() {
+  echo "[$(date)] Showing existing certificates (if any)"
+  /usr/bin/docker run --rm --name certbot \
+    -v "${CERT_DIR}/etc/letsencrypt:/etc/letsencrypt" \
+    -v "${CERT_DIR}/lib/letsencrypt:/var/lib/letsencrypt" \
+    certbot/certbot \
+    certificates
+}
+
 renew() {
   echo "[$(date)] Attempting to renew existing certificate"
   /usr/bin/docker run --rm --name certbot \
@@ -48,6 +57,8 @@ certexists() {
   [ -d "${CERT_DIR}/etc/letsencrypt/live/${DOMAIN}-0001" ] || \
   [ -d "${CERT_DIR}/etc/letsencrypt/live/${DOMAIN}-0002" ]
 }
+
+showcerts
 
 # Stop Mattermost containers to free up port 80
 /usr/bin/docker compose -f docker-compose.yml -f docker-compose.nginx.yml down
