@@ -3,7 +3,10 @@
   ansible.builtin.git:
     repo: "https://github.com/mattermost/docker"
     dest: "{{ mm_deploy_dir }}"
-    version: "main"
+    # WARNING: DO NOT CHANGE THE VERSION unless you understand the database consequences.
+    # This repo will chang the POSTGRES_IMAGE_TAG in the env.example file,
+    # and if that happens you have to do a db upgrade at the same time.
+    version: "74f80e51e0b279b6703506f004a7565055d87d37"
     update: yes
     force: yes
     accept_hostkey: yes
