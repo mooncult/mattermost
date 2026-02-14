@@ -1,0 +1,56 @@
+#!/bin/sh
+set -eu
+
+## Variables from Ansible
+deploy_dir="{{ mm_deploy_dir }}"
+backup_dir="/opt/mattermost/dbdump"
+backup_retention_days=30
+
+# Source the environment file to get database credentials
+. "${deploy_dir}/.env"
+
+if test -z "${POSTGRES_USER}" || test -z "${POSTGRES_DB}"; then
+  printf "[%s] ERROR: missing database variables\n" "$(date)"
+  exit 1
+fi
+
+# Ensure backup directory exists
+mkdir -p "${backup_dir}"
+
+# Generate timestamp for backup filename
+timestamp=$(date +%Y%m%d_%H%M%S)
+backup_file="${backup_dir}/${timestamp}.dump"
+
+printf "[%s] Starting database backup\n" "$(date)"
+
+# Perform database dump
+# Using custom format (-Fc) which is compressed and suitable for pg_restore
+/usr/bin/docker exec -i mattermost-postgres-1 pg_dump -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -Fc > "${backup_file}"
+
+if [ $? -eq 0 ]; then
+  printf "[%s] Database backup completed successfully: %s\n" "$(date)" "${backup_file}"
+
+  # Get backup file size
+  backup_size=$(du -h "${backup_file}" | cut -f1)
+  printf "[%s] Backup size: %s\n" "$(date)" "${backup_size}"
+else
+  printf "[%s] ERROR: Database backup failed\n" "$(date)"
+  exit 1
+fi
+
+# Clean up old backups (only if we have enough backups)
+backup_count=$(find "${backup_dir}" -name "*.dump" -type f | wc -l)
+printf "[%s] Current number of backups: %s\n" "$(date)" "${backup_count}"
+
+if [ "${backup_count}" -ge "${backup_retention_days}" ]; then
+  printf "[%s] Cleaning up backups older than %s days\n" "$(date)" "${backup_retention_days}"
+  find "${backup_dir}" -name "*.dump" -type f -mtime "+${backup_retention_days}" -print -delete
+
+  # Report remaining backups after cleanup
+  backup_count_after=$(find "${backup_dir}" -name "*.dump" -type f | wc -l)
+  printf "[%s] Backups remaining after cleanup: %s\n" "$(date)" "${backup_count_after}"
+else
+  printf "[%s] Skipping cleanup: only %s backups (need at least %s before cleaning up)\n" "$(date)" "${backup_count}" "${backup_retention_days}"
+fi
+
+printf "[%s] Database backup process finished\n" "$(date)"

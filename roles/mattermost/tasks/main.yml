@@ -74,3 +74,33 @@
     job: '"/usr/local/bin/mm-cert-renew.sh" 2>&1 | /usr/bin/systemd-cat -t mm-cert-renew'
     cron_file: mm-cert-renew
   tags: certs
+
+- name: Ensure database backup directory exists
+  file:
+    state: directory
+    path: /opt/mattermost/dbdump
+    owner: root
+    group: root
+    mode: 0755
+  tags: db-backup
+
+- name: Deploy database backup script
+  template:
+    src: "mm-db-backup.sh.j2"
+    dest: "/usr/local/bin/mm-db-backup.sh"
+    mode: 0755
+    owner: root
+    group: root
+  tags: db-backup
+
+- name: Creates a cron file for database backup
+  ansible.builtin.cron:
+    name: daily mattermost database backup
+    minute: "0"
+    hour: "9" # 9:00 system time (UTC)
+    user: root
+    # Pipe the output to the systemd journal.
+    # View logs for this with 'journalctl -t mm-db-backup --since "2 days ago" -f'
+    job: '"/usr/local/bin/mm-db-backup.sh" 2>&1 | /usr/bin/systemd-cat -t mm-db-backup'
+    cron_file: mm-db-backup
+  tags: db-backup
